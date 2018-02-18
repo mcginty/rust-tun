@@ -54,16 +54,21 @@ impl Device {
         }
 
         let id: u32 = name[4..].parse()?;
+        println!("socket name {}", name);
 
+        println!("making socket");
         let tun: RawFd = socket(AddressFamily::System,
                                SockType::Datagram,
                                SOCK_NONBLOCK,
                                SYSPROTO_CONTROL)?;
 
+        println!("making sys control");
         let addr = NixSockAddr::new_sys_control(tun, "com.apple.net.utun_control", id + 1)?;
 
+        println!("connect");
         connect(tun, &addr)?;
 
+        println!("ok");
 //        let mut name = [0u8; 64];
 //        let mut name_len: socklen_t = 64;
 //
@@ -71,8 +76,7 @@ impl Device {
 //            return Err(io::Error::last_os_error().into());
 //        }
 
-//        let ctl = socket(AddressFamily::Inet, SockType::Datagram, SOCK_NONBLOCK, 0)?;
-        let ctl = 0.into();
+        let ctl = socket(AddressFamily::Inet, SockType::Datagram, SOCK_NONBLOCK, 0)?;
 
         let mut device = Device {
             name: name.into(),
