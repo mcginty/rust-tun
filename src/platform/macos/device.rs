@@ -71,7 +71,8 @@ impl Device {
 //            return Err(io::Error::last_os_error().into());
 //        }
 
-        let ctl = socket(AddressFamily::Inet, SockType::Datagram, SOCK_NONBLOCK, 0)?;
+//        let ctl = socket(AddressFamily::Inet, SockType::Datagram, SOCK_NONBLOCK, 0)?;
+        let ctl = 0.into();
 
         let mut device = Device {
             name: name.into(),
