@@ -9,10 +9,16 @@ description = "TUN device creation and handling."
 repository  = "https://github.com/meh/rust-tun"
 keywords    = ["tun", "network", "tunnel", "bindings"]
 
+[features]
+tokio = ["mio", "futures", "tokio-core", "tokio-io"]
+
 [dependencies]
 libc        = "0.2"
 failure     = "0.1.1"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-ioctl-sys = "0.5"
-mio       = { version = "0.6", optional = true }
+ioctl-sys  = "0.5"
+mio        = { version = "0.6", optional = true }
+tokio-core = { version = "0.1", optional = true }
+tokio-io   = { version = "0.1", optional = true }
+futures    = { version = "0.1", optional = true }

@@ -25,6 +25,15 @@ extern crate ioctl_sys as ioctl;
 #[cfg(all(feature = "mio", any(target_os = "linux", target_os = "macos")))]
 extern crate mio;
 
+#[cfg(all(feature = "tokio", any(target_os = "linux", target_os = "macos")))]
+extern crate tokio_core;
+
+#[cfg(all(feature = "tokio", any(target_os = "linux", target_os = "macos")))]
+extern crate tokio_io;
+
+#[cfg(all(feature = "tokio", any(target_os = "linux", target_os = "macos")))]
+extern crate futures;
+
 mod error;
 pub use error::Error;
 

@@ -355,3 +355,51 @@ mod mio {
 		}
 	}
 }
+#[cfg(feature = "mio")] pub use mio::Evented;
+
+#[cfg(feature = "tokio")]
+mod tokio {
+	use futures::Poll;
+	use tokio_core::reactor::{PollEvented, Handle};
+	use tokio_io::{AsyncRead, AsyncWrite};
+	use std::io::{self, Read, Write};
+
+	struct Device {
+		io: PollEvented<super::Device>
+	}
+
+	impl Device {
+        pub fn new(config: &Configuration, handle: &Handle) -> Result<Self, Error> {
+            let io = PollEvented::new(super::Device::new(config)?, handle)?;
+            Ok(Self { io })
+        }
+
+		fn from_device(device: super::Device, handle: &Handle) -> io::Result<Self> {
+			let io = PollEvented::new(device, handle)?;
+			Ok(Self { io })
+		}
+	}
+
+	impl Read for Device {
+		fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+			self.io.read(buf)
+		}
+	}
+
+	impl Write for Device {
+		fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+			self.io.write(buf)
+		}
+
+		fn flush(&mut self) -> io::Result<()> {
+			self.io.flush()
+		}
+	}
+
+	impl AsyncRead for Device {}
+	impl AsyncWrite for Device {
+		fn shutdown(&mut self) -> Poll<(), io::Error> {
+			unimplemented!()
+		}
+	}
+}
