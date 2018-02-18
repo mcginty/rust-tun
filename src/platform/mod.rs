@@ -21,11 +21,15 @@ pub mod posix;
 pub mod linux;
 #[cfg(target_os = "linux")]
 pub use self::linux::{Device, Configuration, create};
+#[cfg(all(target_os = "linux", feature = "tokio"))]
+pub use self::linux::create_tokio;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "macos")]
 pub use self::macos::{Device, Configuration, create};
+#[cfg(all(target_os = "macos", feature = "tokio"))]
+pub use self::macos::create_tokio;
 
 #[cfg(test)]
 mod test {

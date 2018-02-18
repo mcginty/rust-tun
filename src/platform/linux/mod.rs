@@ -17,6 +17,7 @@
 pub mod sys;
 
 mod device;
+#[cfg(feature = "tokio")]
 pub use self::device::Device;
 
 use error::Error;
@@ -38,6 +39,11 @@ impl Configuration {
 }
 
 /// Create a TUN device with the given name.
-pub fn create(configuration: &C) -> Result<Device> {
+pub fn create(configuration: &C) -> Result<Device, Error> {
 	Device::new(&configuration)
+}
+
+#[cfg(feature = "tokio")]
+pub fn create_tokio(configuration: &C, handle: &::tokio_core::reactor::Handle) -> Result<tokio::Device, Error> {
+	tokio::Device::new(&configuration, handle)
 }

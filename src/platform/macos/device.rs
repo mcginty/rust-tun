@@ -339,15 +339,14 @@ mod mio {
 }
 #[cfg(feature = "mio")] pub use mio::Evented;
 
-
 #[cfg(feature = "tokio")]
-mod tokio {
+pub mod tokio {
     use super::*;
 	use futures::Poll;
 	use tokio_core::reactor::{PollEvented, Handle};
 	use tokio_io::{AsyncRead, AsyncWrite};
 
-	struct Device {
+	pub struct Device {
 		io: PollEvented<super::Device>
 	}
 

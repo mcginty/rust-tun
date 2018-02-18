@@ -49,6 +49,9 @@ pub use configuration::Configuration;
 pub mod platform;
 pub use platform::create;
 
+#[cfg(all(feature = "tokio", any(target_os = "linux", target_os = "macos")))]
+pub use platform::create_tokio;
+
 pub fn configure() -> Configuration {
 	Configuration::default()
 }
