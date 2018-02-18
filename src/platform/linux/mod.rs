@@ -19,7 +19,7 @@ pub mod sys;
 mod device;
 pub use self::device::Device;
 
-use error::*;
+use error::Error;
 use configuration::Configuration as C;
 
 /// Linux-only interface configuration.
