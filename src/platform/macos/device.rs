@@ -24,7 +24,7 @@ use std::os::unix::io::AsRawFd;
 use libc;
 use libc::{SOCK_DGRAM, AF_INET, socklen_t, sockaddr, c_void, c_char, c_uint};
 
-use nix::unistd::{close, read, write};
+use nix::{self, unistd::{close, read, write}};
 use std::os::unix::io::RawFd;
 use nix::sys::socket::{AddressFamily, SockType, SockAddr as NixSockAddr, Shutdown, MsgFlags, socket, connect, shutdown, send, recv, SYSPROTO_CONTROL, SOCK_NONBLOCK};
 
@@ -37,8 +37,8 @@ use platform::posix::{self, SockAddr, Fd};
 /// A TUN device using the TUN macOS driver.
 pub struct Device {
 	name: String,
-	tun: Fd,
-	ctl: Fd,
+	tun: RawFd,
+	ctl: RawFd,
 }
 
 impl Device {
@@ -71,14 +71,11 @@ impl Device {
 //            return Err(io::Error::last_os_error().into());
 //        }
 
-        let ctl = unsafe {
-            Fd::new(libc::socket(AF_INET, SOCK_DGRAM, 0))
-                .map_err(|_| io::Error::last_os_error())?
-        };
+        let ctl = socket(AddressFamily::Inet, SockType::Datagram, SOCK_NONBLOCK, 0)?;
 
         let mut device = Device {
             name: name.into(),
-            tun: Fd(tun),
+            tun,
             ctl,
         };
 
@@ -105,7 +102,7 @@ impl Device {
 			req.broadaddr = SockAddr::from(broadaddr).into();
 			req.mask = SockAddr::from(mask).into();
 
-			if siocaifaddr(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocaifaddr(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -115,24 +112,32 @@ impl Device {
 
 	/// Split the interface into a `Reader` and `Writer`.
 	pub fn split(self) -> (posix::Reader, posix::Writer) {
-		let fd = Arc::new(self.tun);
+		let fd = Arc::new(Fd(self.tun));
 		(posix::Reader(fd.clone()), posix::Writer(fd.clone()))
 	}
 }
 
 impl Read for Device {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-		self.tun.read(buf)
+        read(self.tun, buf).map_err(|e|
+            match e {
+                nix::Error::Sys(nix::Errno::EAGAIN) => io::ErrorKind::WouldBlock.into(),
+                _ => io::Error::new(io::ErrorKind::Other, e)
+            })
 	}
 }
 
 impl Write for Device {
 	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		self.tun.write(buf)
+        write(self.tun, buf).map_err(|e|
+            match e {
+                nix::Error::Sys(nix::Errno::EAGAIN) => io::ErrorKind::WouldBlock.into(),
+                _ => io::Error::new(io::ErrorKind::Other, e)
+            })
 	}
 
 	fn flush(&mut self) -> io::Result<()> {
-		self.tun.flush()
+        Ok(())
 	}
 }
 
@@ -150,7 +155,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifflags(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifflags(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -161,7 +166,7 @@ impl D for Device {
 				req.ifru.flags &= !IFF_UP;
 			}
 
-			if siocsifflags(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifflags(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -173,7 +178,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifaddr(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifaddr(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -186,7 +191,7 @@ impl D for Device {
 			let mut req = self.request();
 			req.ifru.addr = SockAddr::from(value).into();
 
-			if siocsifaddr(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifaddr(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -198,7 +203,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifdstaddr(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifdstaddr(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -211,7 +216,7 @@ impl D for Device {
 			let mut req = self.request();
 			req.ifru.dstaddr = SockAddr::from(value).into();
 
-			if siocsifdstaddr(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifdstaddr(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -223,7 +228,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifbrdaddr(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifbrdaddr(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -236,7 +241,7 @@ impl D for Device {
 			let mut req = self.request();
 			req.ifru.broadaddr = SockAddr::from(value).into();
 
-			if siocsifbrdaddr(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifbrdaddr(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -248,7 +253,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifnetmask(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifnetmask(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -261,7 +266,7 @@ impl D for Device {
 			let mut req = self.request();
 			req.ifru.addr = SockAddr::from(value).into();
 
-			if siocsifnetmask(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifnetmask(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -273,7 +278,7 @@ impl D for Device {
 		unsafe {
 			let mut req = self.request();
 
-			if siocgifmtu(self.ctl.as_raw_fd(), &mut req) < 0 {
+			if siocgifmtu(self.ctl, &mut req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -286,7 +291,7 @@ impl D for Device {
 			let mut req = self.request();
 			req.ifru.mtu = value;
 
-			if siocsifmtu(self.ctl.as_raw_fd(), &req) < 0 {
+			if siocsifmtu(self.ctl, &req) < 0 {
 				return Err(io::Error::last_os_error().into());
 			}
 
@@ -297,21 +302,22 @@ impl D for Device {
 
 #[cfg(feature = "mio")]
 mod mio {
+    use super::*;
 	use std::io;
 	use mio::{Ready, Poll, PollOpt, Token};
 	use mio::event::Evented;
 
 	impl Evented for super::Device {
 		fn register(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-			self.tun.register(poll, token, interest, opts)
+			Fd(self.tun).register(poll, token, interest, opts)
 		}
 
 		fn reregister(&self, poll: &Poll, token: Token, interest: Ready, opts: PollOpt) -> io::Result<()> {
-			self.tun.reregister(poll, token, interest, opts)
+			Fd(self.tun).reregister(poll, token, interest, opts)
 		}
 
 		fn deregister(&self, poll: &Poll) -> io::Result<()> {
-			self.tun.deregister(poll)
+			Fd(self.tun).deregister(poll)
 		}
 	}
 }
