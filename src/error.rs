@@ -36,6 +36,9 @@ pub enum Error {
 
     #[fail(display = "Integer parse error: {}", error)]
     ParseNum { error: num::ParseIntError },
+
+    #[fail(display = "Integer parse error: {}", error)]
+    Nix { error: ::nix::Error },
 }
 
 impl From<io::Error> for Error {
@@ -53,5 +56,11 @@ impl From<num::ParseIntError> for Error {
 impl From<ffi::NulError> for Error {
     fn from(error: ffi::NulError) -> Self {
         Error::Nul { error }
+    }
+}
+
+impl From<::nix::Error> for Error {
+    fn from(error: ::nix::Error) -> Self {
+        Error::Nix { error }
     }
 }

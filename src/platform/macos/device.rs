@@ -24,6 +24,10 @@ use std::os::unix::io::AsRawFd;
 use libc;
 use libc::{SOCK_DGRAM, AF_INET, socklen_t, sockaddr, c_void, c_char, c_uint};
 
+use nix::unistd::{close, read, write};
+use std::os::unix::io::RawFd;
+use nix::sys::socket::{AddressFamily, SockType, SockAddr as NixSockAddr, Shutdown, MsgFlags, socket, connect, shutdown, send, recv, SYSPROTO_CONTROL, SOCK_NONBLOCK};
+
 use error::Error;
 use device::Device as D;
 use platform::macos::sys::*;
@@ -40,69 +44,43 @@ pub struct Device {
 impl Device {
 	/// Create a new `Device` for the given `Configuration`.
 	pub fn new(config: &Configuration) -> Result<Self, Error> {
-		let id = if let Some(name) = config.name.as_ref() {
-			if name.len() > IFNAMSIZ {
-				return Err(Error::NameTooLong);
-			}
+        let name: String = config.name.clone().unwrap_or_else(|| "utun0".into());
+        if name.len() > IFNAMSIZ {
+            return Err(Error::NameTooLong);
+        }
 
-			if !name.starts_with("utun") {
-				return Err(Error::InvalidName);
-			}
+        if !name.starts_with("utun") {
+            return Err(Error::InvalidName);
+        }
 
-			name[4..].parse()?
-		}
-		else {
-			0
-		};
+        let id: u32 = name[4..].parse()?;
 
-		let mut device = unsafe {
-			let tun = Fd::new(libc::socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL))
-				.map_err(|_| io::Error::last_os_error())?;
+        let tun: RawFd = socket(AddressFamily::System,
+                               SockType::Datagram,
+                               SOCK_NONBLOCK,
+                               SYSPROTO_CONTROL)?;
 
-			let mut info = ctl_info {
-				ctl_id: 0,
-				ctl_name: {
-					let mut buffer = [0; 96];
-					for (i, o) in UTUN_CONTROL_NAME.as_bytes().iter().zip(buffer.iter_mut()) {
-						*o = *i as _;
-					}
-					buffer
-				},
-			};
+        let addr = NixSockAddr::new_sys_control(tun, "com.apple.net.utun_control", id + 1)?;
 
-			if ctliocginfo(tun.0, &mut info as *mut _ as *mut _) < 0 {
-				return Err(io::Error::last_os_error().into());
-			}
+        connect(tun, &addr)?;
 
-			let addr = sockaddr_ctl {
-				sc_id: info.ctl_id,
-				sc_len: mem::size_of::<sockaddr_ctl>() as _,
-				sc_family: AF_SYSTEM,
-				ss_sysaddr: AF_SYS_CONTROL,
-				sc_unit: id as c_uint,
-				sc_reserved: [0; 5],
-			};
+//        let mut name = [0u8; 64];
+//        let mut name_len: socklen_t = 64;
+//
+//        if libc::getsockopt(tun.0, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, &mut name as *mut _ as *mut c_void, &mut name_len as *mut socklen_t) < 0 {
+//            return Err(io::Error::last_os_error().into());
+//        }
 
-			if libc::connect(tun.0, &addr as *const sockaddr_ctl as *const sockaddr, mem::size_of_val(&addr) as socklen_t) < 0 {
-				return Err(io::Error::last_os_error().into());
-			}
+        let ctl = unsafe {
+            Fd::new(libc::socket(AF_INET, SOCK_DGRAM, 0))
+                .map_err(|_| io::Error::last_os_error())?
+        };
 
-			let mut name = [0u8; 64];
-			let mut name_len: socklen_t = 64;
-
-			if libc::getsockopt(tun.0, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, &mut name as *mut _ as *mut c_void, &mut name_len as *mut socklen_t) < 0 {
-				return Err(io::Error::last_os_error().into());
-			}
-
-			let ctl = Fd::new(libc::socket(AF_INET, SOCK_DGRAM, 0))
-				.map_err(|_| io::Error::last_os_error())?;
-
-			Device {
-				name: CStr::from_ptr(name.as_ptr() as *const c_char).to_string_lossy().into(),
-				tun: tun,
-				ctl: ctl,
-			}
-		};
+        let mut device = Device {
+            name: name.into(),
+            tun: Fd(tun),
+            ctl,
+        };
 
 		device.configure(&config)?;
 

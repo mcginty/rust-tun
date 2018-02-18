@@ -17,6 +17,7 @@
 extern crate libc;
 #[macro_use]
 extern crate failure;
+extern crate nix;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[macro_use]
